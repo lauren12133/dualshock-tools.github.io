@@ -1,5 +1,5 @@
 {
-    ".authorMsg": "这句话意在警醒使用者，优先选择原创作者自己搭建的校准网站，避免因ds手柄官方固件更新导致非原作者的校准网页更新不及时，导致校准失败、变砖等一系列问题",
+    ".authorMsg": "- 中文翻译由 <a href='https://github.com/Yyiyun'>Eythavon</a> 提供。这句话意在警醒使用者，优先选择原创作者自己搭建的校准网站，避免因ds手柄官方固件更新导致非原作者的校准网页更新不及时，导致校准失败、变砖等一系列问题",
     "DualShock Calibration GUI": "手柄校准界面",
     "Unsupported browser. Please use a web browser with WebHID support (e.g. Chrome).": "不支持的浏览器。请使用支持 WebHID 的浏览器 (例如 Chrome)。",
     "Connect a DualShock 4 or a DualSense controller to your computer and press Connect.": "将 DualShock 4 或 DualSense 手柄连接到您的计算机，然后按下连接。",
