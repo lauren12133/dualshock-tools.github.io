@@ -17,6 +17,7 @@ var available_langs = {
     "hu_hu": { "name": "Magyar", "file": "hu_hu.json"},
     "it_it": { "name": "Italiano", "file": "it_it.json"},
     "jp_jp": { "name": "日本語", "file": "jp_jp.json"},
+    "pt_br": { "name": "Português do Brasil", "file": "pt_br.json"},
     "ru_ru": { "name": "Русский", "file": "ru_ru.json"},
     "tr_tr": { "name": "Türkçe", "file": "tr_tr.json"},
     "zh_cn": { "name": "中文", "file": "zh_cn.json"},
@@ -81,7 +82,7 @@ function ds4_hw_to_bm(hw_ver) {
 function is_rare(hw_ver) {
     a = hw_ver >> 8;
     b = a >> 4;
-    return (b == 7 || b == 9 || a == 0xb0 || a == 0xa0);
+    return ((b == 7 && a != 0x74) || (b == 9 && a != 0x93) || a == 0xb0 || a == 0xa0);
 }
 
 async function ds4_info() {
