@@ -12,6 +12,7 @@ var gu = 0;
 // Alphabetical order
 var available_langs = {
     "bg_bg": { "name": "Български", "file": "bg_bg.json"},
+    "cz_cz": { "name": "Čeština", "file": "cz_cz.json"},
     "de_de": { "name": "Deutsch", "file": "de_de.json"},
     "es_es": { "name": "Español", "file": "es_es.json"},
     "fr_fr": { "name": "Français", "file": "fr_fr.json"},
@@ -23,6 +24,7 @@ var available_langs = {
     "ru_ru": { "name": "Русский", "file": "ru_ru.json"},
     "tr_tr": { "name": "Türkçe", "file": "tr_tr.json"},
     "zh_cn": { "name": "中文", "file": "zh_cn.json"},
+    "zh_tw": { "name": "中文(繁)", "file": "zh_tw.json"},
 };
 
 function buf2hex(buffer) {
@@ -148,7 +150,7 @@ async function ds4_info() {
 async function ds4_reset() {
     la("ds4_reset");
     try {
-        await device.sendFeatureReport(0xa0, alloc_req(0x80, [4,1,0]))
+        await device.sendFeatureReport(0xa0, alloc_req(0xa0, [4,1,0]))
     } catch(error) {
     }
 }
