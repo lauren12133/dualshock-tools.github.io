@@ -1,7 +1,10 @@
 var device = null;
 var devname = "";
 var mode = 0;
-var disable_btn = false;
+
+// bitmask: 1: clone, 2: update ds5 firmware, 4: battery low, 8: ds-edge not supported
+var disable_btn = 0;
+var last_disable_btn = 0;
 
 var lang_orig_text = {};
 var lang_cur = {};
@@ -18,14 +21,15 @@ var available_langs = {
     "fr_fr": { "name": "Français", "file": "fr_fr.json"},
     "hu_hu": { "name": "Magyar", "file": "hu_hu.json"},
     "it_it": { "name": "Italiano", "file": "it_it.json"},
-    "ko_kr": { "name": "한국어", "file": "ko_kr.json"},
     "jp_jp": { "name": "日本語", "file": "jp_jp.json"},
+    "ko_kr": { "name": "한국어", "file": "ko_kr.json"},
+    "nl_nl": { "name": "Nederlands", "file": "nl_nl.json"},
     "pl_pl": { "name": "Polski", "file": "pl_pl.json"},
     "pt_br": { "name": "Português do Brasil", "file": "pt_br.json"},
     "ru_ru": { "name": "Русский", "file": "ru_ru.json"},
     "tr_tr": { "name": "Türkçe", "file": "tr_tr.json"},
     "zh_cn": { "name": "中文", "file": "zh_cn.json"},
-    "zh_tw": { "name": "中文(繁)", "file": "zh_tw.json"},
+    "zh_tw": { "name": "中文(繁)", "file": "zh_tw.json"}
 };
 
 function buf2hex(buffer) {
@@ -54,6 +58,8 @@ function ds5_hw_to_bm(hw_ver) {
         return "BDM-030";
     } else if(a == 0x06) {
         return "BDM-040";
+    } else if(a == 0x07) {
+        return "BDM-050";
     } else {
         return l("Unknown");
     }
@@ -92,11 +98,18 @@ function is_rare(hw_ver) {
 
 async function ds4_info() {
     try {
+        var ooc = l("unknown");
+        var is_clone = false;
+
         const view = lf("ds4_info", await device.receiveFeatureReport(0xa3));
 
         var cmd = view.getUint8(0, true);
-        if(cmd != 0xa3 || view.buffer.byteLength != 49) {
-            return false;
+
+        if(cmd != 0xa3 || view.buffer.byteLength < 49) {
+            if(view.buffer.byteLength != 49) {
+                ooc = l("clone");
+                is_clone = true;
+            }
         }
 
         var k1 = new TextDecoder().decode(view.buffer.slice(1, 0x10));
@@ -108,19 +121,16 @@ async function ds4_info() {
         var hw_ver_minor= view.getUint16(0x23, true)
         var sw_ver_major= view.getUint32(0x25, true)
         var sw_ver_minor= view.getUint16(0x25+4, true)
-        var ooc = l("unknown");
-
-        ooc = l("original");
-
-        var is_clone = false;
         try {
-            const view = await device.receiveFeatureReport(0x81);
-            ooc = l("original");
+            if(!is_clone) {
+                const view = await device.receiveFeatureReport(0x81);
+                ooc = l("original");
+            }
         } catch(e) {
             la("clone");
             is_clone = true;
             ooc = "<font color='red'><b>" + l("clone") + "</b></font>";
-            disable_btn = true;
+            disable_btn |= 1;
         }
 
         clear_info();
@@ -143,7 +153,7 @@ async function ds4_info() {
         }
     } catch(e) {
         ooc = "<font color='red'><b>" + l("clone") + "</b></font>";
-        disable_btn = true;
+        disable_btn |= 1;
     }
     return true;
 }
@@ -514,7 +524,7 @@ async function ds5_info() {
         old_controller = build_date.search(/ 2020| 2021/);
         if(old_controller != -1) {
             la("ds5_info_error", {"r": "old"})
-            disable_btn = true;
+            disable_btn |= 2;
             return true;
         }
 
@@ -782,7 +792,7 @@ async function disconnect() {
     mode = 0;
     device.close();
     device = null;
-    disable_btn = false;
+    disable_btn = 0;
     reset_circularity();
     $("#offlinebar").show();
     $("#onlinebar").hide();
@@ -1116,6 +1126,46 @@ function refresh_sticks() {
     setTimeout(timeout_ok, 20);
 }
 
+var last_bat_txt = "";
+var last_bat_disable = null;
+
+function bat_percent_to_text(bat_charge, is_charging, is_error) {
+    var icon_txt = "";
+
+    if(bat_charge < 20) {
+        icon_txt = 'fa-battery-empty';
+    } else if(bat_charge < 40) {
+        icon_txt = 'fa-battery-quarter';
+    } else if(bat_charge < 60) {
+        icon_txt = 'fa-battery-half';
+    } else if(bat_charge < 80) {
+        icon_txt = 'fa-battery-three-quarters';
+    } else {
+        icon_txt = 'fa-battery-full';
+    }
+
+    var icon_full = '<i class="fa-solid ' + icon_txt + '"></i>';
+    var bolt_txt = '';
+    if(is_charging)
+        bolt_txt = '<i class="fa-solid fa-bolt"></i>';
+    bat_txt = bat_charge + "%" + ' ' + bolt_txt + ' ' + icon_full;
+
+    if(is_error) {
+        bat_txt = '<font color="red">' + l("error") + '</font>';
+    }
+    return bat_txt;
+}
+
+function update_battery_status(bat_capacity, cable_connected, is_charging, is_error) {
+    var bat_txt = bat_percent_to_text(bat_capacity, is_charging);
+    var can_use_tool = (bat_capacity >= 30 && cable_connected && !is_error);
+
+    if(bat_txt != last_bat_txt) {
+        $("#d-bat").html(bat_txt);
+        last_bat_txt = bat_txt;
+    }
+}
+
 function process_ds4_input(data) {
     var lx = data.data.getUint8(0);
     var ly = data.data.getUint8(1);
@@ -1135,7 +1185,45 @@ function process_ds4_input(data) {
         ll_updated = true;
         refresh_sticks();
     }
+
+    // Read battery
+    var bat = data.data.getUint8(29);
+    var bat_data = bat & 0x0f;
+    var bat_status = (bat >> 4) & 1;
+
+    var bat_capacity = 0;
+    var cable_connected = false;
+    var is_charging = false;
+    var is_error = false;
+
+    if(bat_status == 1) {
+        cable_connected = true;
+        if(bat_data < 10) {
+            bat_capacity = Math.min(bat_data * 10 + 5, 100);
+            is_charging = true;
+        } else if(bat_data == 10) {
+            bat_capacity = 100;
+            is_charging = true;
+        } else if(bat_data == 11) {
+            bat_capacity = 100;
+            // charged
+        } else {
+            // error
+            bat_capacity = 0;
+            is_error = true;
+        }
+    } else {
+        cable_connected = false;
+        if(bat_data < 10) {
+            bat_capacity = bat_data * 10 + 5;
+        } else {
+            bat_capacity = 100;
+        }
+    }
+
+    update_battery_status(bat_capacity, cable_connected, is_charging, is_error);
 }
+
 
 function process_ds_input(data) {
     var lx = data.data.getUint8(0);
@@ -1156,6 +1244,30 @@ function process_ds_input(data) {
         ll_updated = true;
         refresh_sticks();
     }
+
+    var bat = data.data.getUint8(52);
+    var bat_charge = bat & 0x0f;
+    var bat_status = bat >> 4;
+
+    var bat_capacity = 0;
+    var cable_connected = false;
+    var is_charging = false;
+    var is_error = false;
+
+    if(bat_status == 0) {
+        bat_capacity = Math.min(bat_charge * 10 + 5, 100);
+    } else if(bat_status == 1) {
+        bat_capacity = Math.max(bat_charge * 10 + 5, 100);
+        is_charging = true;
+        cable_connected = true;
+    } else if(bat_status == 2) {
+        bat_capacity = 100;
+        cable_connected = true;
+    } else {
+        is_error = true;
+    }
+
+    update_battery_status(bat_capacity, cable_connected, is_charging, is_error);
 }
 
 async function continue_connection(report) {
@@ -1200,7 +1312,7 @@ async function continue_connection(report) {
                 connected = true;
                 mode = 0;
                 devname = l("Sony DualSense Edge");
-                disable_btn = true;
+                disable_btn |= 8;
             }
         } else {
             $("#btnconnect").prop("disabled", false);
@@ -1226,17 +1338,8 @@ async function continue_connection(report) {
             return;
         }
 
-        if(disable_btn) {
-            if(device.productId == 0x0ce6) {
-                show_popup(l("This DualSense controller has outdated firmware.") + "<br>" + l("Please update the firmware and try again."), true);
-            } else if(device.productId == 0x0df2) {
-                show_popup(l("Calibration of the DualSense Edge is not currently supported."));
-            } else {
-                show_popup(l("The device appears to be a DS4 clone. All functionalities are disabled."));
-            }
-        }
-
-        $(".ds-btn").prop("disabled", disable_btn);
+        if(disable_btn != 0)
+            update_disable_btn();
 
         $("#btnconnect").prop("disabled", false);
         $("#connectspinner").hide();
@@ -1248,10 +1351,36 @@ async function continue_connection(report) {
     }
 }
 
+function update_disable_btn() {
+    if(disable_btn == last_disable_btn)
+        return;
+
+    if(disable_btn == 0) {
+        $(".ds-btn").prop("disabled", false);
+        last_disable_btn = 0;
+        return;
+    }
+
+    $(".ds-btn").prop("disabled", true);
+
+    // show only one popup
+    if(disable_btn & 1 && !(last_disable_btn & 1)) {
+        show_popup(l("The device appears to be a DS4 clone. All functionalities are disabled."));
+    } else if(disable_btn & 2 && !(last_disable_btn & 2)) {
+        show_popup(l("This DualSense controller has outdated firmware.") + "<br>" + l("Please update the firmware and try again."), true);
+    } else if(disable_btn & 8 && !(last_disable_btn & 8)) {
+        show_popup(l("Calibration of the DualSense Edge is not currently supported."));
+    } else if(disable_btn & 4 && !(last_disable_btn & 4)) {
+        show_popup(l("Please charge controller battery over 30% to use this tool."));
+    }
+    last_disable_btn = disable_btn;
+}
+
 async function connect() {
     gj = crypto.randomUUID();
     reset_circularity();
     la("begin");
+    last_bat_txt = "";
     try {
         $("#btnconnect").prop("disabled", true);
         $("#connectspinner").show();
